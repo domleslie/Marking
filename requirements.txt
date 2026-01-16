@@ -1,5 +1,5 @@
 streamlit
 google-generativeai
 Pillow
-python-dotenv
+pandas
 st-gsheets-connection
