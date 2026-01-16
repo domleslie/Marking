@@ -5,6 +5,12 @@ import pandas as pd
 from datetime import datetime
 from google.generativeai import types # Important for PDF support
 
+# Line 1: The 'Permanent' link to your memo (replace with your direct link)
+MEMO_URL = "https://drive.google.com/file/d/1ia4jAk_m3vDGelBD096Mxl13ohG6QChU/view?usp=drive_link"
+
+# Line 2: Adding the URL directly into the AI's content list
+response = model.generate_content([prompt, types.Part.from_uri(uri=MEMO_URL, mime_type="image/jpeg"), student_img])
+
 # --- 1. SETUP ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel('gemini-2.5-flash')
