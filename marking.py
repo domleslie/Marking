@@ -41,42 +41,38 @@ if st.button("Submit & Mark"):
     else:
         with st.spinner("AI Teacher is marking..."):
             try:
-                # A. Process Student Work into bytes
+                # 1. Read student file
                 student_bytes = uploaded_work.read()
                 student_mime = uploaded_work.type
                 
-                # B. The AI Prompt
-                prompt = """
-                You are a teacher marking a student's work.
-                1. Use the provided MEMO URL as the source of truth for correct answers.
-                2. Mark the STUDENT WORK provided in the bytes.
-                3. Provide a clear total score.
-                4. List specific corrections for any mistakes.
+                # 2. Build the request using the exact keys the error asked for
+                # 'inline_data' is for the student's file
+                student_part = {"inline_data": {"mime_type": student_mime, "data": student_bytes}}
+                
+                # For the Memo, we will provide the URL as text in the prompt 
+                # because Google Drive URLs work best when the AI 'fetches' them via text instructions
+                instruction_prompt = f"""
+                You are a teacher. 
+                1. Access the official memo here: {MEMO_URL}
+                2. Mark the attached student work against that memo.
+                3. Provide a score and corrections.
                 """
+
+                # 3. Call the model
+                response = model.generate_content([instruction_prompt, student_part])
                 
-                # C. The "Dictionary Method" to avoid Part errors
-                # This sends the memo from Drive and the student file from the uploader
-                response = model.generate_content([
-                    prompt,
-                    {"mime_type": "image/jpeg", "part_metadata": {"file_uri": MEMO_URL}}, 
-                    {"mime_type": student_mime, "data": student_bytes}
-                ])
-                
-                # Show results to student
+                # Show results
                 st.subheader(f"Results for {student_name}")
                 st.markdown(response.text)
                 
-                # --- 6. SEND TO GOOGLE SHEETS ---
+                # 4. Save to Sheets
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
                     "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "AI_Feedback": response.text[:1000] # Limit characters for the sheet cell
+                    "AI_Feedback": response.text[:1000]
                 }])
-                
-                # Append to your Google Sheet
                 conn.create(data=new_row)
-                st.success("Your mark has been recorded in the Gradebook!")
+                st.success("Result recorded!")
 
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
-                st.info("Check if your Gemini API key and Google Sheet URL are correct in Secrets.")
