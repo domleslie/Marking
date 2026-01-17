@@ -11,8 +11,9 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 st.sidebar.title("🍎 Teacher Dashboard")
 password = st.sidebar.text_input("Enter Teacher Password", type="password")
 
-# MODEL PICKER: Keeps your ability to swap versions if one is down
-available_models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-3-flash"]
+# --- MODEL PICKER (Fixes the 404 Error) ---
+# We use Gemini 2.5 Flash as it is the current workhorse
+available_models = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-3-flash"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
@@ -21,7 +22,6 @@ FILE_ID = "1ia4jAk_m3vDGelBD096Mxl13ohG6QChU"
 MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # --- 4. GOOGLE SHEETS CONNECTION ---
-# This uses the 'public' mode if you set the sheet to 'Anyone with link can edit'
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 5. STUDENT PORTAL (Main Page) ---
@@ -41,7 +41,7 @@ if st.button("Submit & Mark"):
                 student_bytes = uploaded_work.read()
                 student_mime = uploaded_work.type
                 
-                # B. Build the request
+                # B. Build the request with "inline_data"
                 student_part = {
                     "inline_data": {
                         "mime_type": student_mime,
@@ -70,10 +70,8 @@ if st.button("Submit & Mark"):
                     "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "Marking_Details": response.text[:1000] 
                 }])
-                
-                # This works without Service Account keys IF the sheet is Public Editor
                 conn.create(data=new_data)
-                st.success("Your mark has been recorded in the gradebook!")
+                st.success("Your mark has been recorded!")
 
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
