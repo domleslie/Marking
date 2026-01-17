@@ -10,7 +10,7 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # --- 2. TEACHER SIDEBAR ---
 st.sidebar.title("🍎 Teacher Dashboard")
-available_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+available_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
