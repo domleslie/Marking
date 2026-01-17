@@ -28,48 +28,50 @@ uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "pdf"])
 
 if st.button("Submit & Mark"):
     if not student_name or not uploaded_work:
-        st.error("Please provide name and work.")
+        st.error("Please provide both your name and your work.")
     else:
-        with st.spinner("AI is calculating the mark..."):
+        with st.spinner(f"AI ({selected_model_name}) is marking..."):
             try:
-                # File Processing
+                # 1. Prepare File
                 file_bytes = uploaded_work.read()
                 
-                # REFINED PROMPT: Tells AI to end with a clear tag
+                # 2. THE RIGID PROMPT (Forces Structured Output)
                 prompt = f"""
-                Compare the work to this memo: {MEMO_URL}.
-                1. Provide detailed feedback for the student to read.
-                2. At the very end of your response, provide the final score in this EXACT format:
-                   SCORE: [number]/[total]
+                You are a teacher marking against this memo: {MEMO_URL}
+                
+                Mark the uploaded student work and respond ONLY in the following JSON format:
+                {{
+                    "feedback": "Your detailed comments for the student here",
+                    "score": "The numeric score, e.g., 18/20"
+                }}
                 """
+
+                # 3. Request (Note the 'response_mime_type' setting)
+                response = model.generate_content(
+                    [prompt, {"mime_type": uploaded_work.type, "data": file_bytes}],
+                    generation_config={"response_mime_type": "application/json"}
+                )
                 
-                response = model.generate_content([
-                    prompt,
-                    {"mime_type": uploaded_work.type, "data": file_bytes}
-                ])
+                # 4. Parse the JSON
+                import json
+                result = json.loads(response.text)
                 
-                full_text = response.text
+                feedback_text = result.get("feedback", "No feedback provided.")
+                final_score = result.get("score", "N/A")
+
+                # 5. Display to Student
+                st.subheader(f"Results for {student_name}")
+                st.info(f"**Final Score: {final_score}**")
+                st.markdown(feedback_text)
                 
-                # --- EXTRACTION LOGIC ---
-                # This looks for the "SCORE: 15/20" tag at the end
-                score_match = re.search(r"SCORE:\s*(\d+/\d+)", full_text)
-                final_score = score_match.group(1) if score_match else "N/A"
-                
-                # Show full feedback to student
-                st.subheader("Feedback")
-                st.markdown(full_text)
-                
-                # --- 6. CLEAN GOOGLE SHEETS ENTRY ---
-                # We create columns for Name, Date, and Mark (Score)
+                # 6. SAVE TO GOOGLE SHEETS
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
                     "Date": datetime.now().strftime("%Y-%m-%d"),
                     "Mark": final_score
                 }])
-                
-                # Add it to the sheet
                 conn.create(data=new_row)
-                st.success(f"Success! {student_name}'s mark ({final_score}) is now in the Gradebook.")
+                st.success("Your mark has been saved!")
 
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Something went wrong: {e}")
