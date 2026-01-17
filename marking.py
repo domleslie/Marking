@@ -3,17 +3,14 @@ import google.generativeai as genai
 import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
+import re
 
-# --- 1. SETUP & CONFIG ---
+# --- 1. SETUP ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# --- 2. TEACHER ACCESS (Sidebar) ---
+# --- 2. TEACHER SIDEBAR ---
 st.sidebar.title("🍎 Teacher Dashboard")
-password = st.sidebar.text_input("Enter Teacher Password", type="password")
-
-# --- MODEL PICKER (Fixes the 404 Error) ---
-# We use Gemini 2.5 Flash as it is the current workhorse
-available_models = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-3-flash"]
+available_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
@@ -21,58 +18,58 @@ model = genai.GenerativeModel(selected_model_name)
 FILE_ID = "1ia4jAk_m3vDGelBD096Mxl13ohG6QChU"
 MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
-# --- 4. GOOGLE SHEETS CONNECTION ---
+# --- 4. GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 5. STUDENT PORTAL (Main Page) ---
+# --- 5. STUDENT PORTAL ---
 st.title("📝 Student Marking Portal")
-st.write("Upload your work to get instant feedback.")
-
 student_name = st.text_input("Student Full Name:")
-uploaded_work = st.file_uploader("Upload your worksheet", type=["jpg", "png", "pdf"])
+uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "pdf"])
 
 if st.button("Submit & Mark"):
     if not student_name or not uploaded_work:
-        st.error("Please provide both your name and your work.")
+        st.error("Please provide name and work.")
     else:
-        with st.spinner(f"AI ({selected_model_name}) is marking..."):
+        with st.spinner("AI is calculating the mark..."):
             try:
-                # A. Read student file
-                student_bytes = uploaded_work.read()
-                student_mime = uploaded_work.type
+                # File Processing
+                file_bytes = uploaded_work.read()
                 
-                # B. Build the request with "inline_data"
-                student_part = {
-                    "inline_data": {
-                        "mime_type": student_mime,
-                        "data": student_bytes
-                    }
-                }
-                
-                # C. The Instruction Prompt
+                # REFINED PROMPT: Tells AI to end with a clear tag
                 prompt = f"""
-                You are a teacher. 
-                1. Refer to the memo at this link: {MEMO_URL}
-                2. Mark the student's uploaded work against that memo.
-                3. Provide a Score and corrections.
+                Compare the work to this memo: {MEMO_URL}.
+                1. Provide detailed feedback for the student to read.
+                2. At the very end of your response, provide the final score in this EXACT format:
+                   SCORE: [number]/[total]
                 """
-
-                # D. Generate Content
-                response = model.generate_content([prompt, student_part])
                 
-                # E. Show Results
-                st.subheader(f"Results for {student_name}")
-                st.markdown(response.text)
+                response = model.generate_content([
+                    prompt,
+                    {"mime_type": uploaded_work.type, "data": file_bytes}
+                ])
                 
-                # --- 6. SEND TO GOOGLE SHEETS ---
-                new_data = pd.DataFrame([{
+                full_text = response.text
+                
+                # --- EXTRACTION LOGIC ---
+                # This looks for the "SCORE: 15/20" tag at the end
+                score_match = re.search(r"SCORE:\s*(\d+/\d+)", full_text)
+                final_score = score_match.group(1) if score_match else "N/A"
+                
+                # Show full feedback to student
+                st.subheader("Feedback")
+                st.markdown(full_text)
+                
+                # --- 6. CLEAN GOOGLE SHEETS ENTRY ---
+                # We create columns for Name, Date, and Mark (Score)
+                new_row = pd.DataFrame([{
                     "Student": student_name, 
-                    "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Marking_Details": response.text[:1000] 
+                    "Date": datetime.now().strftime("%Y-%m-%d"),
+                    "Mark": final_score
                 }])
-                conn.create(data=new_data)
-                st.success("Your mark has been recorded!")
+                
+                # Add it to the sheet
+                conn.create(data=new_row)
+                st.success(f"Success! {student_name}'s mark ({final_score}) is now in the Gradebook.")
 
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
-                st.info("Try switching the 'Model Version' in the sidebar.")
+                st.error(f"Error: {e}")
