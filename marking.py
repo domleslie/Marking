@@ -3,7 +3,7 @@ import google.generativeai as genai
 import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
-import re
+import json
 
 # --- 1. SETUP ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -18,7 +18,7 @@ model = genai.GenerativeModel(selected_model_name)
 FILE_ID = "1ia4jAk_m3vDGelBD096Mxl13ohG6QChU"
 MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
-# --- 4. GOOGLE SHEETS ---
+# --- 4. GOOGLE SHEETS CONNECTION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 5. STUDENT PORTAL ---
@@ -28,50 +28,64 @@ uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "pdf"])
 
 if st.button("Submit & Mark"):
     if not student_name or not uploaded_work:
-        st.error("Please provide both your name and your work.")
+        st.error("Please provide name and work.")
     else:
-        with st.spinner(f"AI ({selected_model_name}) is marking..."):
+        with st.spinner(f"AI is marking {student_name}'s work..."):
             try:
-                # 1. Prepare File
+                # A. Prepare the file
                 file_bytes = uploaded_work.read()
                 
-                # 2. THE RIGID PROMPT (Forces Structured Output)
+                # B. REFINED PROMPT (Personalized & JSON)
                 prompt = f"""
-                You are a teacher marking against this memo: {MEMO_URL}
-                
-                Mark the uploaded student work and respond ONLY in the following JSON format:
+                You are a teacher. Mark this work against the memo at {MEMO_URL}.
+                The student's name is {student_name}.
+                Mark the work 5 times and take the avergae result rounded to the nearest whole number as the final score.
+                1. Address the student by their name in the feedback.
+                2. Respond ONLY in this JSON format:
                 {{
-                    "feedback": "Your detailed comments for the student here",
-                    "score": "The numeric score, e.g., 18/20"
+                    "personalized_feedback": "Hello {student_name}, [your comments here]",
+                    "score": "X/Total"
                 }}
                 """
-
-                # 3. Request (Note the 'response_mime_type' setting)
+                
+                # C. Generate Content with JSON mode
                 response = model.generate_content(
                     [prompt, {"mime_type": uploaded_work.type, "data": file_bytes}],
                     generation_config={"response_mime_type": "application/json"}
                 )
                 
-                # 4. Parse the JSON
-                import json
+                # D. Parse Data
                 result = json.loads(response.text)
-                
-                feedback_text = result.get("feedback", "No feedback provided.")
-                final_score = result.get("score", "N/A")
+                feedback = result.get("personalized_feedback")
+                score = result.get("score")
 
-                # 5. Display to Student
+                # E. Show Results
                 st.subheader(f"Results for {student_name}")
-                st.info(f"**Final Score: {final_score}**")
-                st.markdown(feedback_text)
+                st.info(f"**Score: {score}**")
+                st.markdown(feedback)
                 
-                # 6. SAVE TO GOOGLE SHEETS
+                # --- 6. THE "SAME SHEET" FIX ---
+                # 1. Read the existing data first
+                try:
+                    existing_df = conn.read()
+                except:
+                    # If the sheet is empty, create a blank dataframe with headers
+                    existing_df = pd.DataFrame(columns=["Student", "Date", "Mark"])
+                
+                # 2. Create the new row
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
                     "Date": datetime.now().strftime("%Y-%m-%d"),
-                    "Mark": final_score
+                    "Mark": score
                 }])
-                conn.create(data=new_row)
-                st.success("Your mark has been saved!")
+                
+                # 3. Join them together (Append)
+                updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+                
+                # 4. Write the whole list back to the same sheet
+                conn.update(data=updated_df)
+                
+                st.success("Gradebook updated on the same sheet!")
 
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                st.error(f"Error: {e}")
