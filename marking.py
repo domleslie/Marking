@@ -8,7 +8,7 @@ import json
 # --- 1. SETUP ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# --- 2. TEACHER SIDEBAR ---
+# --- 2. TEACHER SIDEBAR (Model Switcher) ---
 st.sidebar.title("🍎 Teacher Dashboard")
 available_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
@@ -32,14 +32,14 @@ if st.button("Submit & Mark"):
     else:
         with st.spinner(f"AI is marking {student_name}'s work..."):
             try:
-                # A. Prepare the file
+                # File Processing
                 file_bytes = uploaded_work.read()
                 
-                # B. REFINED PROMPT (Personalized & JSON)
+                # Personalized JSON Prompt
                 prompt = f"""
                 You are a teacher. Mark this work against the memo at {MEMO_URL}.
                 The student's name is {student_name}.
-                Mark the work 5 times and take the avergae result rounded to the nearest whole number as the final score.
+                
                 1. Address the student by their name in the feedback.
                 2. Respond ONLY in this JSON format:
                 {{
@@ -48,44 +48,54 @@ if st.button("Submit & Mark"):
                 }}
                 """
                 
-                # C. Generate Content with JSON mode
+                # Generate Content
                 response = model.generate_content(
                     [prompt, {"mime_type": uploaded_work.type, "data": file_bytes}],
                     generation_config={"response_mime_type": "application/json"}
                 )
                 
-                # D. Parse Data
                 result = json.loads(response.text)
                 feedback = result.get("personalized_feedback")
                 score = result.get("score")
 
-                # E. Show Results
+                # Show Results to Student
                 st.subheader(f"Results for {student_name}")
                 st.info(f"**Score: {score}**")
                 st.markdown(feedback)
                 
-                # --- 6. THE "SAME SHEET" FIX ---
-                # 1. Read the existing data first
+                # --- 6. THE "APPEND" FIX (Keeps previous entries) ---
+                # Read existing data or create a fresh one if the sheet is blank
                 try:
                     existing_df = conn.read()
                 except:
-                    # If the sheet is empty, create a blank dataframe with headers
                     existing_df = pd.DataFrame(columns=["Student", "Date", "Mark"])
                 
-                # 2. Create the new row
+                # Create the new row
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
                     "Date": datetime.now().strftime("%Y-%m-%d"),
                     "Mark": score
                 }])
                 
-                # 3. Join them together (Append)
+                # Combine old and new data (Append)
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 
-                # 4. Write the whole list back to the same sheet
+                # Write the whole list back to the same sheet
                 conn.update(data=updated_df)
-                
-                st.success("Gradebook updated on the same sheet!")
+                st.success("Your mark has been successfully recorded!")
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
+# --- 7. TEACHER VIEW (Password Protected) ---
+st.divider()
+st.subheader("📊 Teacher Gradebook")
+teacher_pwd = st.text_input("Enter Password to View Sheet", type="password")
+
+if teacher_pwd == st.secrets.get("TEACHER_PASSWORD", "admin123"):
+    st.write("Current Marks:")
+    try:
+        grade_data = conn.read()
+        st.dataframe(grade_data) # Shows the full sheet as a table
+    except:
+        st.warning("Gradebook is currently empty.")
