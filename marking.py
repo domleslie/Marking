@@ -79,11 +79,10 @@ if st.button("Submit & Mark"):
                     # ttl=0 ensures we fetch the absolute latest version from the sheet
                     existing_df = conn.read(ttl=0).dropna(how='all')
                 except:
-                    existing_df = pd.DataFrame(columns=["Student", "Date", "Mark"])
+                    existing_df = pd.DataFrame(columns=["Student", "Mark"])
                 
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
-                    "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "Mark": score
                 }])
                 
