@@ -27,7 +27,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 5. STUDENT PORTAL ---
 st.title("📝 Student Marking Portal")
 student_name = st.text_input("Student Full Name:")
-uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "jpeg"])
+uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "jpeg", "pdf"])
 
 if st.button("Submit & Mark"):
     if not student_name or not uploaded_work:
