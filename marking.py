@@ -4,12 +4,15 @@ import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import json
+from PIL import Image
+import io
 
 # --- 1. SETUP ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# --- 2. TEACHER SIDEBAR (Model Switcher) ---
+# --- 2. TEACHER SIDEBAR ---
 st.sidebar.title("🍎 Teacher Dashboard")
+# Note: Using the official stable names
 available_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
@@ -24,7 +27,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 5. STUDENT PORTAL ---
 st.title("📝 Student Marking Portal")
 student_name = st.text_input("Student Full Name:")
-uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "pdf"])
+uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "jpeg"])
 
 if st.button("Submit & Mark"):
     if not student_name or not uploaded_work:
@@ -32,25 +35,28 @@ if st.button("Submit & Mark"):
     else:
         with st.spinner(f"AI is marking {student_name}'s work..."):
             try:
-                # File Processing
-                file_bytes = uploaded_work.read()
+                # OPTIMIZE IMAGE (Prevents 500 Errors)
+                img = Image.open(uploaded_work)
+                img.thumbnail((1024, 1024))
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='JPEG')
+                optimized_bytes = img_byte_arr.getvalue()
                 
                 # Personalized JSON Prompt
                 prompt = f"""
                 You are a teacher. Mark this work against the memo at {MEMO_URL}.
                 The student's name is {student_name}.
+                Address them by name in the feedback.
                 
-                1. Address the student by their name in the feedback.
-                2. Respond ONLY in this JSON format:
+                Respond ONLY in this JSON format:
                 {{
-                    "personalized_feedback": "Hello {student_name}, [your comments here]",
+                    "personalized_feedback": "Hello {student_name}, ...",
                     "score": "X/Total"
                 }}
                 """
                 
-                # Generate Content
                 response = model.generate_content(
-                    [prompt, {"mime_type": uploaded_work.type, "data": file_bytes}],
+                    [prompt, {"mime_type": "image/jpeg", "data": optimized_bytes}],
                     generation_config={"response_mime_type": "application/json"}
                 )
                 
@@ -58,44 +64,48 @@ if st.button("Submit & Mark"):
                 feedback = result.get("personalized_feedback")
                 score = result.get("score")
 
-                # Show Results to Student
                 st.subheader(f"Results for {student_name}")
                 st.info(f"**Score: {score}**")
                 st.markdown(feedback)
                 
-                # --- 6. THE "APPEND" FIX (Keeps previous entries) ---
-                # Read existing data or create a fresh one if the sheet is blank
+                # --- 6. THE APPEND FIX ---
+                # Step A: Read the CURRENT sheet
                 try:
-                    existing_df = conn.read()
+                    # We use ttl=0 to ensure we aren't looking at a "cached" old version
+                    existing_df = conn.read(ttl=0) 
+                    # Drop any completely empty rows that might interfere
+                    existing_df = existing_df.dropna(how='all')
                 except:
                     existing_df = pd.DataFrame(columns=["Student", "Date", "Mark"])
                 
-                # Create the new row
+                # Step B: Create the new row
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
-                    "Date": datetime.now().strftime("%Y-%m-%d"),
+                    "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "Mark": score
                 }])
                 
-                # Combine old and new data (Append)
+                # Step C: Combine them
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 
-                # Write the whole list back to the same sheet
+                # Step D: Update the sheet
+                # We specify the worksheet name (usually 'Sheet1') to be safe
                 conn.update(data=updated_df)
-                st.success("Your mark has been successfully recorded!")
+                
+                st.success("Entry added to the Gradebook!")
 
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# --- 7. TEACHER VIEW (Password Protected) ---
+# --- 7. TEACHER VIEW ---
 st.divider()
 st.subheader("📊 Teacher Gradebook")
-teacher_pwd = st.text_input("Enter Password to View Sheet", type="password")
+teacher_pwd = st.text_input("Enter Password", type="password")
 
 if teacher_pwd == st.secrets.get("TEACHER_PASSWORD", "admin123"):
-    st.write("Current Marks:")
     try:
-        grade_data = conn.read()
-        st.dataframe(grade_data) # Shows the full sheet as a table
+        # Fetch fresh data for the teacher
+        current_sheet = conn.read(ttl=0)
+        st.dataframe(current_sheet, use_container_width=True)
     except:
-        st.warning("Gradebook is currently empty.")
+        st.info("No marks recorded yet.")
