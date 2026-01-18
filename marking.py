@@ -54,7 +54,7 @@ if st.button("Submit & Mark"):
                 For the sake of consistency mark the work ten times and then take the average score rounded to the nearest whole number as the final result.
                 The student's name is {student_name}.
                 Address them by name in the feedback.
-                The feedback must be detailed and particularly focused on where the student lost their marks.
+                The feedback must be detailed and particularly focused on where the student lost their marks. The feedback should include step by step guides on how to do the question.
                 The feedback must be clear.
                 
                 Respond ONLY in this JSON format:
