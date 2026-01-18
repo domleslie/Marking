@@ -18,7 +18,7 @@ model = genai.GenerativeModel(selected_model_name)
 
 # --- 3. THE PERMANENT MEMO ---
 FILE_ID = "1ia4jAk_m3vDGelBD096Mxl13ohG6QChU"
-MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
+MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"  
 
 # --- 4. GOOGLE SHEETS CONNECTION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -51,7 +51,7 @@ if st.button("Submit & Mark"):
                 # Personalized JSON Prompt
                 prompt = f"""
                 You are a teacher. Mark this work against the memo at {MEMO_URL}.
-                For the sake of consistency mark the work ten times and then take the average score rounded to the nearest whole number as the final result.
+                For the sake of consistency remark the work 100 times and then take the average score rounded to the nearest whole number as the final result.
                 The student's name is {student_name}.
                 Address them by name in the feedback.
                 The feedback must be detailed and particularly focused on where the student lost their marks. The feedback should include step by step guides on how to do the question.
