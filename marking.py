@@ -43,7 +43,8 @@ if st.button("Submit & Mark"):
                 
                 # Instruction/Rubric Prompt
                 rubric_prompt = f"""
-                You are a strict teacher marking against this memo: {MEMO_URL}.
+                You are a strict but fair teacher marking against this memo: {MEMO_URL}.
+                Remark the students work 100 times and take the average result rounded to the nearest whole number as the final mark.
                 Student Name: {student_name}
                 
                 ### MARKING RUBRIC:
