@@ -12,13 +12,13 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # --- 2. TEACHER SIDEBAR ---
 st.sidebar.title("🍎 Teacher Dashboard")
-available_models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+available_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
 # --- 3. THE PERMANENT MEMO ---
-FILE_ID = "15qetiIoJ1xdUHgMSW6r0Ix3nA6jXQaK7" #https://drive.google.com/file/d/15qetiIoJ1xdUHgMSW6r0Ix3nA6jXQaK7/view?usp=drive_link
-MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"  
+FILE_ID = "15qetiIoJ1xdUHgMSW6r0Ix3nA6jXQaK7"
+MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # --- 4. GOOGLE SHEETS CONNECTION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -26,39 +26,30 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 5. STUDENT PORTAL ---
 st.title("📝 Student Marking Portal")
 student_name = st.text_input("Student Full Name:")
-uploaded_work = st.file_uploader("Upload Work", type=["jpg", "png", "jpeg", "pdf"])
+
+# Change: accept_multiple_files=True
+uploaded_files = st.file_uploader("Upload Work (Select all pages at once)", 
+                                  type=["jpg", "png", "jpeg", "pdf"], 
+                                  accept_multiple_files=True)
 
 if st.button("Submit & Mark"):
-    if not student_name or not uploaded_work:
-        st.error("Please provide name and work.")
+    if not student_name or not uploaded_files:
+        st.error("Please provide name and upload at least one file.")
     else:
-        with st.spinner(f"AI is marking {student_name}'s work..."):
+        with st.spinner(f"AI is marking all {len(uploaded_files)} pages for {student_name}..."):
             try:
-                # --- FORMAT HANDLING ---
-                if uploaded_work.type == "application/pdf":
-                    # PDF: Send directly without resizing
-                    file_data = uploaded_work.read()
-                    mime_type = "application/pdf"
-                else:
-                    # IMAGE: Optimize to prevent 500 errors
-                    img = Image.open(uploaded_work)
-                    img.thumbnail((1024, 1024))
-                    img_byte_arr = io.BytesIO()
-                    img.save(img_byte_arr, format='JPEG')
-                    file_data = img_byte_arr.getvalue()
-                    mime_type = "image/jpeg"
+                # --- PROCESS MULTIPLE FILES ---
+                ai_content_list = []
                 
-                # Personalized JSON Prompt
-                prompt = f"""
-                You are a teacher. Mark this work against the memo at {MEMO_URL}.
-                For the sake of consistency, recheck the work 100 times and then take the average score rounded to the nearest whole number as the final result.
-                Be aware of the fact that the student might use another correct method, do not penalise for this.
-                If marks are awarded for a specific item and the student managed to do the calculation in their head, still award the mark.
-                If a question is dependent on the answer from a previous question and they got that question wrong, award marks for continuous accuracy (if their calculations are correct but have used a wrong previous answer).
-                The student's name is {student_name}.
-                Address them by name in the feedback.
-                The feedback must be detailed and particularly focused on where the student lost their marks. The feedback should include step by step guides on how to do the question.
-                The feedback must be clear.
+                # Instruction/Rubric Prompt
+                rubric_prompt = f"""
+                You are a strict teacher marking against this memo: {MEMO_URL}.
+                Student Name: {student_name}
+                
+                ### MARKING RUBRIC:
+                1. Accuracy: Give full marks only if the answer matches the memo exactly.
+                2. Method: If the student shows a correct method but a calculation error, give 50%.
+                3. Personalization: Address {student_name} by name and encourage them.
                 
                 Respond ONLY in this JSON format:
                 {{
@@ -66,10 +57,34 @@ if st.button("Submit & Mark"):
                     "score": "X/Total"
                 }}
                 """
-                
+                ai_content_list.append(rubric_prompt)
+
+                for uploaded_file in uploaded_files:
+                    if uploaded_file.type == "application/pdf":
+                        ai_content_list.append({
+                            "mime_type": "application/pdf", 
+                            "data": uploaded_file.read()
+                        })
+                    else:
+                        # Image processing (Fix RGBA error)
+                        img = Image.open(uploaded_file)
+                        if img.mode in ("RGBA", "P"):
+                            img = img.convert("RGB")
+                        img.thumbnail((1024, 1024))
+                        img_byte_arr = io.BytesIO()
+                        img.save(img_byte_arr, format='JPEG', quality=85)
+                        ai_content_list.append({
+                            "mime_type": "image/jpeg", 
+                            "data": img_byte_arr.getvalue()
+                        })
+
+                # --- GENERATE CONTENT (Strict Setting) ---
                 response = model.generate_content(
-                    [prompt, {"mime_type": mime_type, "data": file_data}],
-                    generation_config={"response_mime_type": "application/json"}
+                    ai_content_list,
+                    generation_config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.0  # Zero temperature for maximum consistency
+                    }
                 )
                 
                 result = json.loads(response.text)
@@ -77,25 +92,24 @@ if st.button("Submit & Mark"):
                 score = result.get("score")
 
                 st.subheader(f"Results for {student_name}")
-                st.info(f"**Score: {score}**")
+                st.info(f"**Final Score: {score}**")
                 st.markdown(feedback)
                 
-                # --- 6. THE APPEND FIX ---
+                # --- 6. APPEND TO SHEET ---
                 try:
-                    # ttl=0 ensures we fetch the absolute latest version from the sheet
                     existing_df = conn.read(ttl=0).dropna(how='all')
                 except:
-                    existing_df = pd.DataFrame(columns=["Student", "Mark"])
+                    existing_df = pd.DataFrame(columns=["Student", "Date", "Mark"])
                 
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
+                    "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "Mark": score
                 }])
                 
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 conn.update(data=updated_df)
-                
-                st.success("Entry added to the Gradebook!")
+                st.success("All pages marked and saved to Gradebook!")
 
             except Exception as e:
                 st.error(f"Error: {e}")
