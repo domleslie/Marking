@@ -50,7 +50,7 @@ if st.button("Submit & Mark"):
                 ### MARKING RUBRIC:
                 1. Accuracy: Give full marks only if the answer matches the memo exactly.
                 2. Personalization: Address {student_name} by name and encourage them.
-                3. Give the student detailed feedback on their mistakes, so that they can learn.
+                3. Give the student detailed feedback on their mistakes, so that they can learn. Give the feedback in bullet form, question by question. It must be easy to read.
                 
                 Respond ONLY in this JSON format:
                 {{
@@ -100,7 +100,7 @@ if st.button("Submit & Mark"):
                 try:
                     existing_df = conn.read(ttl=0).dropna(how='all')
                 except:
-                    existing_df = pd.DataFrame(columns=["Student", "Date", "Mark"])
+                    existing_df = pd.DataFrame(columns=["Student", "Mark"])
                 
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
