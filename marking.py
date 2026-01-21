@@ -17,7 +17,7 @@ selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
 # --- 3. THE PERMANENT MEMO ---
-FILE_ID = "1ia4jAk_m3vDGelBD096Mxl13ohG6QChU"
+FILE_ID = "15qetiIoJ1xdUHgMSW6r0Ix3nA6jXQaK7" #https://drive.google.com/file/d/15qetiIoJ1xdUHgMSW6r0Ix3nA6jXQaK7/view?usp=drive_link
 MEMO_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"  
 
 # --- 4. GOOGLE SHEETS CONNECTION ---
@@ -52,6 +52,9 @@ if st.button("Submit & Mark"):
                 prompt = f"""
                 You are a teacher. Mark this work against the memo at {MEMO_URL}.
                 For the sake of consistency, recheck the work 100 times and then take the average score rounded to the nearest whole number as the final result.
+                Be aware of the fact that the student might use another correct method, do not penalise for this.
+                If marks are awarded for a specific item and the student managed to do the calculation in their head, still award the mark.
+                If a question is dependent on the answer from a previous question and they got that question wrong, award marks for continuous accuracy (if their calculations are correct but have used a wrong previous answer).
                 The student's name is {student_name}.
                 Address them by name in the feedback.
                 The feedback must be detailed and particularly focused on where the student lost their marks. The feedback should include step by step guides on how to do the question.
