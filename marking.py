@@ -12,7 +12,7 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # --- 2. TEACHER SIDEBAR ---
 st.sidebar.title("🍎 Teacher Dashboard")
-available_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+available_models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
@@ -48,8 +48,8 @@ if st.button("Submit & Mark"):
                 
                 ### MARKING RUBRIC:
                 1. Accuracy: Give full marks only if the answer matches the memo exactly.
-                2. Method: If the student shows a correct method but a calculation error, give 50%.
-                3. Personalization: Address {student_name} by name and encourage them.
+                2. Personalization: Address {student_name} by name and encourage them.
+                3. Give the student detailed feedback on their mistakes, so that they can learn.
                 
                 Respond ONLY in this JSON format:
                 {{
