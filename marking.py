@@ -29,7 +29,7 @@ student_name = st.text_input("Student Full Name:")
 
 # Change: accept_multiple_files=True
 uploaded_files = st.file_uploader("Upload Work (Select all pages at once)", 
-                                  type=["jpg", "png", "jpeg", "pdf"], 
+                                  type=["jpg", "png", "jpeg", "pdf", "heic"], 
                                   accept_multiple_files=True)
 
 if st.button("Submit & Mark"):
