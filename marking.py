@@ -6,13 +6,19 @@ from streamlit_gsheets import GSheetsConnection
 import json
 from PIL import Image
 import io
+# New library for HEIC support
+from pillow_heif import register_heif_opener
+
+# --- 0. ENABLE HEIC SUPPORT ---
+# This allows PIL (Image.open) to handle HEIC files automatically
+register_heif_opener()
 
 # --- 1. SETUP ---
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # --- 2. TEACHER SIDEBAR ---
 st.sidebar.title("🍎 Teacher Dashboard")
-available_models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro"]
+available_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 selected_model_name = st.sidebar.selectbox("Model Version", available_models)
 model = genai.GenerativeModel(selected_model_name)
 
@@ -27,9 +33,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 st.title("📝 Student Marking Portal")
 student_name = st.text_input("Student Full Name:")
 
-# Change: accept_multiple_files=True
+# Added "HEIC" and "heic" to the list
 uploaded_files = st.file_uploader("Upload Work (Select all pages at once)", 
-                                  type=["jpg", "png", "jpeg", "pdf", "heic"], 
+                                  type=["jpg", "png", "jpeg", "pdf", "heic", "HEIC"], 
                                   accept_multiple_files=True)
 
 if st.button("Submit & Mark"):
@@ -38,10 +44,8 @@ if st.button("Submit & Mark"):
     else:
         with st.spinner(f"AI is marking all {len(uploaded_files)} pages for {student_name}..."):
             try:
-                # --- PROCESS MULTIPLE FILES ---
                 ai_content_list = []
                 
-                # Instruction/Rubric Prompt
                 rubric_prompt = f"""
                 You are a strict but fair teacher marking against this memo: {MEMO_URL}.
                 Remark the students work 100 times and take the average result rounded to the nearest whole number as the final mark.
@@ -67,24 +71,28 @@ if st.button("Submit & Mark"):
                             "data": uploaded_file.read()
                         })
                     else:
-                        # Image processing (Fix RGBA error)
+                        # Image processing (Now handles HEIC thanks to register_heif_opener)
                         img = Image.open(uploaded_file)
-                        if img.mode in ("RGBA", "P"):
+                        
+                        # Convert to RGB (Required for JPEG saving and AI processing)
+                        if img.mode in ("RGBA", "P", "CMYK"):
                             img = img.convert("RGB")
+                            
                         img.thumbnail((1024, 1024))
                         img_byte_arr = io.BytesIO()
                         img.save(img_byte_arr, format='JPEG', quality=85)
+                        
                         ai_content_list.append({
                             "mime_type": "image/jpeg", 
                             "data": img_byte_arr.getvalue()
                         })
 
-                # --- GENERATE CONTENT (Strict Setting) ---
+                # --- GENERATE CONTENT ---
                 response = model.generate_content(
                     ai_content_list,
                     generation_config={
                         "response_mime_type": "application/json",
-                        "temperature": 0.0  # Zero temperature for maximum consistency
+                        "temperature": 0.0
                     }
                 )
                 
@@ -100,7 +108,7 @@ if st.button("Submit & Mark"):
                 try:
                     existing_df = conn.read(ttl=0).dropna(how='all')
                 except:
-                    existing_df = pd.DataFrame(columns=["Student", "Mark"])
+                    existing_df = pd.DataFrame(columns=["Student", "Mark", "Date"])
                 
                 new_row = pd.DataFrame([{
                     "Student": student_name, 
